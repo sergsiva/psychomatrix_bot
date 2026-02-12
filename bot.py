@@ -80,6 +80,13 @@ def start_command(message):
         reply_markup=get_main_keyboard()
     )
 
+    # Если команда пришла с параметром (датой)
+    if len(message.text.split()) > 1:
+        birthdate = message.text.split()[1]
+        # Отправляем дату в обработчик
+        message.text = birthdate
+        handle_date_input(message)
+
 @bot.message_handler(commands=['history'])
 def history_command(message):
     """Показывает историю расчетов"""
