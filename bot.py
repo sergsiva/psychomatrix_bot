@@ -460,40 +460,42 @@ def handle_unknown(message):
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app(message):
     """Обработка данных из Mini App"""
-    print(f"📲 Получены данные WebApp от {message.chat.id}")
-    print(f"📦 Данные: {message.web_app_data.data}")
-    
     try:
-        import json
-        data = json.loads(message.web_app_data.data)
+        # Получаем дату (может быть как JSON, так и просто строка)
+        data = message.web_app_data.data
+        print(f"📲 WebApp data: {data}")
         
-        if data['action'] == 'calculate':
-            birthdate = data['birthdate']
-            print(f"📅 Расчет для даты: {birthdate}")
-            
-            # Расчет матрицы
-            result = calculate_matrix(birthdate)
-            
-            if result['success']:
-                # Отправляем результат обратно в WebApp
-                bot.send_message(
-                    message.chat.id,
-                    json.dumps(result),
-                    reply_to_message_id=message.message_id
-                )
-                print("✅ Результат отправлен в WebApp")
+        # Пробуем распарсить JSON
+        try:
+            import json
+            json_data = json.loads(data)
+            if isinstance(json_data, dict) and 'birthdate' in json_data:
+                birthdate = json_data['birthdate']
             else:
-                bot.send_message(
-                    message.chat.id,
-                    json.dumps({'error': 'Неверная дата'}),
-                    reply_to_message_id=message.message_id
-                )
-                print("❌ Ошибка расчета")
+                birthdate = data
+        except:
+            # Если не JSON - это просто дата
+            birthdate = data
+        
+        # Рассчитываем матрицу
+        result = calculate_matrix(birthdate)
+        
+        if result['success']:
+            # Отправляем результат обратно
+            bot.send_message(
+                message.chat.id,
+                json.dumps(result),
+                reply_to_message_id=message.message_id
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                json.dumps({'error': 'Неверная дата'}),
+                reply_to_message_id=message.message_id
+            )
                 
     except Exception as e:
         print(f"❌ Ошибка WebApp: {e}")
-        import traceback
-        traceback.print_exc()
 
 # ============================================
 # ЗАПУСК БОТА
