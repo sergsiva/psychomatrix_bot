@@ -457,6 +457,36 @@ def handle_unknown(message):
         reply_markup=get_main_keyboard()
     )
 
+@bot.message_handler(content_types=['web_app_data'])
+def handle_web_app(message):
+    """Обработка данных из Mini App"""
+    try:
+        import json
+        data = json.loads(message.web_app_data.data)
+        
+        if data['action'] == 'calculate':
+            birthdate = data['birthdate']
+            
+            # Расчет матрицы
+            result = calculate_matrix(birthdate)
+            
+            if result['success']:
+                # Отправляем результат обратно в WebApp
+                bot.send_message(
+                    message.chat.id,
+                    json.dumps(result),
+                    reply_to_message_id=message.message_id
+                )
+            else:
+                bot.send_message(
+                    message.chat.id,
+                    json.dumps({'error': 'Неверная дата'}),
+                    reply_to_message_id=message.message_id
+                )
+                
+    except Exception as e:
+        print(f"❌ Ошибка WebApp: {e}")
+
 # ============================================
 # ЗАПУСК БОТА
 # ============================================
@@ -480,3 +510,4 @@ def run_bot_safe():
 if __name__ == "__main__":
     # Запускаем безопасно
     run_bot_safe()
+
