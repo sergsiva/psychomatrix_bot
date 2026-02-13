@@ -10,7 +10,11 @@ from database import (
 )
 import time
 
-TOKEN = "8592056819:AAEIGbEfBpUVjNpaW1N83iucXHVxe8s3yrY"
+
+
+import os
+
+TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAEhJN7WwGULOzVv7U1nrTt8xCxj2hID7zs')
 bot = telebot.TeleBot(TOKEN, threaded=True)
 
 print("=" * 50)
