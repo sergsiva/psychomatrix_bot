@@ -14,7 +14,7 @@ import time
 
 import os
 
-TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAEhJN7WwGULOzVv7U1nrTt8xCxj2hID7zs')
+TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAEwVyxh2MZ0kDM9Q-QnHQOxiaj0Z2Fck20')
 bot = telebot.TeleBot(TOKEN, threaded=True)
 
 print("=" * 50)
