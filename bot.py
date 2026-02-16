@@ -470,6 +470,14 @@ def handle_unknown(message):
 
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app(message):
+    print("🔥🔥🔥 WEB_APP_DATA ПОЛУЧЕН! 🔥🔥🔥")
+    print(f"📦 Тип: {type(message.web_app_data)}")
+    print(f"📦 Данные: {message.web_app_data.data}")
+    print(f"🆔 Query ID: {message.web_app_data.query_id}")
+    print(f"👤 User ID: {message.from_user.id}")
+
+
+def handle_web_app(message):
     """Обработка данных из Mini App и отправка результата обратно в Mini App"""
     try:
         # Получаем данные и query_id
