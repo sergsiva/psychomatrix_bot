@@ -470,41 +470,48 @@ def handle_unknown(message):
 
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app(message):
-    """Обработка данных из Mini App"""
+    """Обработка данных из Mini App и отправка результата обратно в Mini App"""
     try:
-        # Получаем дату (может быть как JSON, так и просто строка)
+        # Получаем данные и query_id
         data = message.web_app_data.data
-        print(f"📲 WebApp data: {data}")
+        query_id = message.web_app_data.query_id
+        print(f"📲 WebApp query_id: {query_id}, data: {data}")
         
-        # Пробуем распарсить JSON
+        # Пробуем распарсить дату
         try:
             import json
             json_data = json.loads(data)
-            if isinstance(json_data, dict) and 'birthdate' in json_data:
-                birthdate = json_data['birthdate']
-            else:
-                birthdate = data
+            birthdate = json_data.get('birthdate', data)
         except:
-            # Если не JSON - это просто дата
             birthdate = data
         
         # Рассчитываем матрицу
         result = calculate_matrix(birthdate)
         
         if result['success']:
-            # Отправляем результат обратно
-            bot.send_message(
-                message.chat.id,
-                json.dumps(result),
-                reply_to_message_id=message.message_id
+            # Отправляем результат обратно в Mini App через answerWebAppQuery
+            bot.answer_web_app_query(
+                query_id,
+                types.InlineQueryResultArticle(
+                    id='0',
+                    title='Результат расчета',
+                    input_message_content=types.InputTextMessageContent(
+                        json.dumps(result, ensure_ascii=False)
+                    )
+                )
             )
+            print("✅ Результат отправлен обратно в Mini App")
         else:
-            bot.send_message(
-                message.chat.id,
-                json.dumps({'error': 'Неверная дата'}),
-                reply_to_message_id=message.message_id
+            bot.answer_web_app_query(
+                query_id,
+                types.InlineQueryResultArticle(
+                    id='0',
+                    title='Ошибка',
+                    input_message_content=types.InputTextMessageContent(
+                        json.dumps({'error': 'Неверная дата'})
+                    )
+                )
             )
-                
     except Exception as e:
         print(f"❌ Ошибка WebApp: {e}")
 
