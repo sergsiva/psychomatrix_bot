@@ -9,10 +9,8 @@ from database import (
     save_stat
 )
 import time
-
-
-
 import os
+import json
 
 TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAEwVyxh2MZ0kDM9Q-QnHQOxiaj0Z2Fck20')
 bot = telebot.TeleBot(TOKEN, threaded=True)
@@ -468,60 +466,48 @@ def handle_unknown(message):
         reply_markup=get_main_keyboard()
     )
 
+# ============================================
+# ОБРАБОТЧИК ДАННЫХ ИЗ MINI APP
+# ============================================
+
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app(message):
-    print("🔥🔥🔥 WEB_APP_DATA ПОЛУЧЕН! 🔥🔥🔥")
-    print(f"📦 Тип: {type(message.web_app_data)}")
-    print(f"📦 Данные: {message.web_app_data.data}")
-    print(f"🆔 Query ID: {message.web_app_data.query_id}")
-    print(f"👤 User ID: {message.from_user.id}")
-
-
-def handle_web_app(message):
-    """Обработка данных из Mini App и отправка результата обратно в Mini App"""
+    """Обработка данных из Mini App и отправка ответа"""
     try:
-        # Получаем данные и query_id
         data = message.web_app_data.data
-        query_id = message.web_app_data.query_id
-        print(f"📲 WebApp query_id: {query_id}, data: {data}")
+        print(f"📲 WebApp data: {data}")
         
-        # Пробуем распарсить дату
+        # Пробуем распарсить JSON
         try:
-            import json
             json_data = json.loads(data)
             birthdate = json_data.get('birthdate', data)
         except:
             birthdate = data
         
+        print(f"📅 Дата для расчета: {birthdate}")
+        
         # Рассчитываем матрицу
         result = calculate_matrix(birthdate)
         
         if result['success']:
-            # Отправляем результат обратно в Mini App через answerWebAppQuery
-            bot.answer_web_app_query(
-                query_id,
-                types.InlineQueryResultArticle(
-                    id='0',
-                    title='Результат расчета',
-                    input_message_content=types.InputTextMessageContent(
-                        json.dumps(result, ensure_ascii=False)
-                    )
-                )
+            # Отправляем результат обратно в Mini App
+            bot.send_message(
+                message.chat.id,
+                json.dumps(result, ensure_ascii=False),
+                reply_to_message_id=message.message_id
             )
             print("✅ Результат отправлен обратно в Mini App")
         else:
-            bot.answer_web_app_query(
-                query_id,
-                types.InlineQueryResultArticle(
-                    id='0',
-                    title='Ошибка',
-                    input_message_content=types.InputTextMessageContent(
-                        json.dumps({'error': 'Неверная дата'})
-                    )
-                )
+            bot.send_message(
+                message.chat.id,
+                json.dumps({'error': 'Неверная дата'}),
+                reply_to_message_id=message.message_id
             )
+                
     except Exception as e:
         print(f"❌ Ошибка WebApp: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ============================================
 # ЗАПУСК БОТА
@@ -546,4 +532,3 @@ def run_bot_safe():
 if __name__ == "__main__":
     # Запускаем безопасно
     run_bot_safe()
-
