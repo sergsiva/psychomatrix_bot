@@ -473,6 +473,11 @@ def handle_unknown(message):
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app(message):
     """Обработка данных из Mini App и отправка ответа"""
+    print("🔥🔥🔥 WEB_APP_DATA ПОЛУЧЕН! 🔥🔥🔥")
+    print(f"📦 Данные: {message.web_app_data.data}")
+    print(f"🆔 Chat ID: {message.chat.id}")
+    print(f"🆔 Message ID: {message.message_id}")
+    
     try:
         data = message.web_app_data.data
         print(f"📲 WebApp data: {data}")
