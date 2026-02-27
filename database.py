@@ -2,10 +2,6 @@ import sqlite3
 import json
 from datetime import datetime
 
-# ============================================
-# ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
-# ============================================
-
 def init_database():
     """Создает базу данных и таблицы если их нет"""
     conn = sqlite3.connect('matrix_bot.db')
@@ -28,7 +24,17 @@ def init_database():
                   created_at TIMESTAMP,
                   FOREIGN KEY (user_id) REFERENCES users(id))''')
     
-    # Таблица статистики (опционально)
+    # НОВАЯ ТАБЛИЦА для сохранённых разборов с именами
+    c.execute('''CREATE TABLE IF NOT EXISTS saved_analyses
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  user_id INTEGER,
+                  name TEXT,
+                  birthdate TEXT,
+                  matrix_data TEXT,
+                  created_at TIMESTAMP,
+                  FOREIGN KEY (user_id) REFERENCES users(id))''')
+    
+    # Таблица статистики
     c.execute('''CREATE TABLE IF NOT EXISTS stats
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   user_id INTEGER,
@@ -49,18 +55,15 @@ def save_user(user_id, username=None, first_name=None, last_name=None):
     conn = sqlite3.connect('matrix_bot.db')
     c = conn.cursor()
     
-    # Проверяем есть ли пользователь
     c.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
     exists = c.fetchone()
     
     if exists:
-        # Обновляем существующего
         c.execute('''UPDATE users 
                      SET username = ?, first_name = ?, last_name = ?
                      WHERE user_id = ?''',
                   (username, first_name, last_name, user_id))
     else:
-        # Добавляем нового
         c.execute('''INSERT INTO users 
                      (user_id, username, first_name, last_name, created_at) 
                      VALUES (?, ?, ?, ?, ?)''',
@@ -69,27 +72,6 @@ def save_user(user_id, username=None, first_name=None, last_name=None):
     conn.commit()
     conn.close()
     return True
-
-def get_user(user_id):
-    """Получает информацию о пользователе"""
-    conn = sqlite3.connect('matrix_bot.db')
-    c = conn.cursor()
-    
-    c.execute('''SELECT user_id, username, first_name, last_name, created_at 
-                 FROM users WHERE user_id = ?''', (user_id,))
-    
-    result = c.fetchone()
-    conn.close()
-    
-    if result:
-        return {
-            'user_id': result[0],
-            'username': result[1],
-            'first_name': result[2],
-            'last_name': result[3],
-            'created_at': result[4]
-        }
-    return None
 
 # ============================================
 # РАБОТА С РАСЧЕТАМИ (ИСТОРИЯ)
@@ -100,10 +82,8 @@ def save_calculation(user_id, birthdate, matrix_result):
     conn = sqlite3.connect('matrix_bot.db')
     c = conn.cursor()
     
-    # Сохраняем пользователя если его еще нет
     save_user(user_id)
     
-    # Сохраняем расчет
     c.execute('''INSERT INTO calculations 
                  (user_id, birthdate, matrix_data, created_at) 
                  VALUES (?, ?, ?, ?)''',
@@ -112,9 +92,6 @@ def save_calculation(user_id, birthdate, matrix_result):
     calculation_id = c.lastrowid
     conn.commit()
     conn.close()
-    
-    # Логируем в консоль
-    print(f"💾 Расчет сохранен: ID {calculation_id}, пользователь {user_id}")
     
     return calculation_id
 
@@ -148,38 +125,91 @@ def get_user_calculations(user_id, limit=10):
     
     return calculations
 
-def get_calculation_by_id(calculation_id):
-    """Получает расчет по ID"""
+# ============================================
+# НОВЫЕ ФУНКЦИИ ДЛЯ СОХРАНЁННЫХ РАЗБОРОВ
+# ============================================
+
+def save_analysis(user_id, name, birthdate, matrix_result):
+    """Сохраняет разбор с именем"""
     conn = sqlite3.connect('matrix_bot.db')
     c = conn.cursor()
     
-    c.execute('''SELECT user_id, birthdate, matrix_data, created_at 
-                 FROM calculations WHERE id = ?''', (calculation_id,))
+    # Проверяем, нет ли уже такого имени у пользователя
+    c.execute('''SELECT id FROM saved_analyses 
+                 WHERE user_id = ? AND name = ?''', (user_id, name))
+    exists = c.fetchone()
+    
+    if exists:
+        conn.close()
+        return False, "У вас уже есть разбор с таким именем"
+    
+    c.execute('''INSERT INTO saved_analyses 
+                 (user_id, name, birthdate, matrix_data, created_at) 
+                 VALUES (?, ?, ?, ?, ?)''',
+              (user_id, name, birthdate, json.dumps(matrix_result), datetime.now()))
+    
+    analysis_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return True, analysis_id
+
+def get_user_analyses(user_id):
+    """Возвращает список сохранённых разборов пользователя"""
+    conn = sqlite3.connect('matrix_bot.db')
+    c = conn.cursor()
+    
+    c.execute('''SELECT id, name, birthdate, created_at 
+                 FROM saved_analyses 
+                 WHERE user_id = ? 
+                 ORDER BY created_at DESC''', (user_id,))
+    
+    results = c.fetchall()
+    conn.close()
+    
+    analyses = []
+    for row in results:
+        analyses.append({
+            'id': row[0],
+            'name': row[1],
+            'birthdate': row[2],
+            'created_at': row[3]
+        })
+    
+    return analyses
+
+def get_analysis_by_name(user_id, name):
+    """Получает конкретный разбор по имени"""
+    conn = sqlite3.connect('matrix_bot.db')
+    c = conn.cursor()
+    
+    c.execute('''SELECT birthdate, matrix_data, created_at 
+                 FROM saved_analyses 
+                 WHERE user_id = ? AND name = ?''', (user_id, name))
     
     result = c.fetchone()
     conn.close()
     
     if result:
         try:
-            matrix_data = json.loads(result[2])
+            matrix_data = json.loads(result[1])
         except:
             matrix_data = {}
         
         return {
-            'user_id': result[0],
-            'birthdate': result[1],
+            'birthdate': result[0],
             'matrix_data': matrix_data,
-            'created_at': result[3]
+            'created_at': result[2]
         }
     return None
 
-def delete_calculation(calculation_id, user_id):
-    """Удаляет расчет (только если он принадлежит пользователю)"""
+def delete_analysis(user_id, name):
+    """Удаляет сохранённый разбор"""
     conn = sqlite3.connect('matrix_bot.db')
     c = conn.cursor()
     
-    c.execute('''DELETE FROM calculations 
-                 WHERE id = ? AND user_id = ?''', (calculation_id, user_id))
+    c.execute('''DELETE FROM saved_analyses 
+                 WHERE user_id = ? AND name = ?''', (user_id, name))
     
     deleted = c.rowcount > 0
     conn.commit()
@@ -210,89 +240,29 @@ def get_user_stats(user_id):
     conn = sqlite3.connect('matrix_bot.db')
     c = conn.cursor()
     
-    # Количество расчетов
     c.execute('SELECT COUNT(*) FROM calculations WHERE user_id = ?', (user_id,))
     total_calculations = c.fetchone()[0]
     
-    # Первый расчет
     c.execute('''SELECT MIN(created_at) FROM calculations 
                  WHERE user_id = ?''', (user_id,))
     first_calculation = c.fetchone()[0]
     
-    # Последний расчет
     c.execute('''SELECT MAX(created_at) FROM calculations 
                  WHERE user_id = ?''', (user_id,))
     last_calculation = c.fetchone()[0]
+    
+    # Количество сохранённых разборов
+    c.execute('SELECT COUNT(*) FROM saved_analyses WHERE user_id = ?', (user_id,))
+    total_saved = c.fetchone()[0]
     
     conn.close()
     
     return {
         'total_calculations': total_calculations,
         'first_calculation': first_calculation,
-        'last_calculation': last_calculation
+        'last_calculation': last_calculation,
+        'total_saved': total_saved
     }
 
-def get_global_stats():
-    """Получает глобальную статистику бота"""
-    conn = sqlite3.connect('matrix_bot.db')
-    c = conn.cursor()
-    
-    # Общее количество пользователей
-    c.execute('SELECT COUNT(*) FROM users')
-    total_users = c.fetchone()[0]
-    
-    # Общее количество расчетов
-    c.execute('SELECT COUNT(*) FROM calculations')
-    total_calculations = c.fetchone()[0]
-    
-    # Самая популярная дата
-    c.execute('''SELECT birthdate, COUNT(*) as count 
-                 FROM calculations 
-                 GROUP BY birthdate 
-                 ORDER BY count DESC 
-                 LIMIT 1''')
-    popular_date = c.fetchone()
-    
-    conn.close()
-    
-    return {
-        'total_users': total_users,
-        'total_calculations': total_calculations,
-        'most_popular_date': popular_date[0] if popular_date else None,
-        'popular_date_count': popular_date[1] if popular_date else 0
-    }
-
-# ============================================
-# УТИЛИТЫ
-# ============================================
-
-def get_database_size():
-    """Возвращает размер базы данных в МБ"""
-    import os
-    if os.path.exists('matrix_bot.db'):
-        size_bytes = os.path.getsize('matrix_bot.db')
-        return round(size_bytes / (1024 * 1024), 2)  # в МБ
-    return 0
-
-def backup_database():
-    """Создает резервную копию базы данных"""
-    import shutil
-    from datetime import datetime
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"matrix_bot_backup_{timestamp}.db"
-    
-    try:
-        shutil.copy2('matrix_bot.db', backup_name)
-        print(f"✅ Резервная копия создана: {backup_name}")
-        return backup_name
-    except Exception as e:
-        print(f"❌ Ошибка создания резервной копии: {e}")
-        return None
-
-# ============================================
-# АВТОМАТИЧЕСКАЯ ИНИЦИАЛИЗАЦИЯ
-# ============================================
-
-# При импорте файла автоматически инициализируем базу
+# Инициализируем базу при импорте
 init_database()

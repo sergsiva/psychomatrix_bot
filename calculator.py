@@ -1,145 +1,91 @@
-"""Модуль расчета психоматрицы Пифагора"""
-
 def calculate_matrix(birthdate):
-    """Рассчитывает психоматрицу Пифагора по дате рождения"""
+    """Основная функция расчета психоматрицы"""
     try:
-        # Разбиваем дату на части
         day, month, year = map(int, birthdate.split('.'))
         
-        # Собираем все цифры даты
+        # 1. Цифры даты
         digits = []
         for number in [day, month, year]:
             for digit in str(number):
                 digits.append(int(digit))
         
-        # Рабочие числа
+        # 2. Рабочие числа
         work1 = sum(digits)
         work2 = sum(int(d) for d in str(work1))
-        first_digit_of_day = int(str(day)[0])
+        first_digit_of_day = int(str(day)[0]) if day >= 10 else day
         work3 = work1 - 2 * first_digit_of_day
         work4 = sum(int(d) for d in str(work3))
         
-        # Все цифры для подсчета
-        all_digits = digits.copy()  # Используем .copy() чтобы не менять оригинал
+        # 3. Все цифры для подсчета
+        all_digits = digits.copy()
         for num in [work1, work2, work3, work4]:
             for d in str(num):
                 all_digits.append(int(d))
         
-        # МАТРИЦА ВЕРТИКАЛЬНО (как нужно):
-        # 1 4 7
-        # 2 5 8
-        # 3 6 9
-        
-        # Создаем матрицу с правильной нумерацией
+        # 4. Матрица 3x3 (вертикальная)
         matrix = {}
+        for i in range(1, 10):
+            matrix[i] = all_digits.count(i)
         
-        # Первый столбец: 1, 2, 3
-        matrix[1] = all_digits.count(1)  # Характер
-        matrix[2] = all_digits.count(2)  # Энергия
-        matrix[3] = all_digits.count(3)  # Интерес
+        # 5. Общее число (сумма всех цифр матрицы)
+        total_number = sum(matrix.values())
         
-        # Второй столбец: 4, 5, 6
-        matrix[4] = all_digits.count(4)  # Здоровье
-        matrix[5] = all_digits.count(5)  # Логика
-        matrix[6] = all_digits.count(6)  # Труд
-        
-        # Третий столбец: 7, 8, 9
-        matrix[7] = all_digits.count(7)  # Удача
-        matrix[8] = all_digits.count(8)  # Долг
-        matrix[9] = all_digits.count(9)  # Память
-        
-        # Описания для цифр
-        descriptions = {
-            1: ["Слабый характер", "Эгоист", "Мягкий характер", "Уравновешенный", "Сильный характер", "Тиран"],
-            2: ["Мало энергии", "Нормальная энергия", "Много энергии", "Очень много энергии"],
-            3: ["Нет интересов", "1-2 интереса", "Разносторонний", "Очень разносторонний"],
-            4: ["Слабое здоровье", "Нормальное", "Хорошее", "Отличное"],
-            5: ["Интуиция", "Логика+интуиция", "Логика", "Сильная логика"],
-            6: ["Не любит труд", "Нормально", "Трудолюбив", "Очень трудолюбив"],
-            7: ["Невезучий", "Нормальная удача", "Везучий", "Очень везучий"],
-            8: ["Безответственный", "Нормальный", "Ответственный", "Очень ответственный"],
-            9: ["Слабая память", "Нормальная", "Хорошая", "Отличная"]
+        # 6. Интерпретация общего числа
+        total_interpretations = {
+            15: "Число 15: Духовный учитель, миссионер",
+            16: "Число 16: Разрушитель старого, строитель нового",
+            17: "Число 17: Звезда, талант, успех",
+            18: "Число 18: Луна, мистика, интуиция",
+            19: "Число 19: Солнце, лидер, творец",
+            20: "Число 20: Пробуждение, предназначение",
+            21: "Число 21: Мир, расширение, успех",
+            22: "Число 22: Мастер, созидатель",
+            23: "Число 23: Удача, везение",
+            24: "Число 24: Карма, воздаяние",
+            25: "Число 25: Сила, власть",
+            26: "Число 26: Партнёрство, союз",
+            27: "Число 27: Мудрость, знание",
+            28: "Число 28: Баланс, гармония",
+            29: "Число 29: Энергия, активность",
+            30: "Число 30: Творчество, вдохновение"
         }
         
-        # Получаем описания для каждой цифры
-        interpretations = {}
-        for digit in range(1, 10):
-            count = matrix[digit]
-            if digit in descriptions and count < len(descriptions[digit]):
-                interpretations[digit] = descriptions[digit][count]
-            else:
-                interpretations[digit] = "Особое значение"
-        
-        # Детальный анализ
-        analysis_result = get_detailed_analysis(matrix, f"{day:02d}.{month:02d}.{year}")
+        total_desc = total_interpretations.get(
+            total_number, 
+            f"Число {total_number}: Особое сочетание энергий"
+        )
         
         return {
             'success': True,
             'date': f"{day:02d}.{month:02d}.{year}",
             'work_numbers': [work1, work2, work3, work4],
             'matrix': matrix,
-            'interpretations': interpretations,
-            'analysis': analysis_result if analysis_result['success'] else None
+            'total_number': total_number,
+            'total_description': total_desc,
+            'all_digits': all_digits
         }
         
     except Exception as e:
         return {'success': False, 'error': f'Неверный формат даты: {str(e)}'}
 
-
-def get_detailed_analysis(matrix, birthdate):
-    """Возвращает детальный анализ матрицы"""
-    try:
-        # Пробуем импортировать из analysis.py
-        from analysis import generate_telegram_report
-        
-        # Генерируем отчет
-        report_messages = generate_telegram_report(matrix, birthdate)
-        
-        return {
-            'success': True,
-            'report_messages': report_messages,
-            'has_detailed_analysis': True
-        }
-    except ImportError:
-        # Если analysis.py нет, используем упрощенную версию
-        return get_basic_analysis(matrix)
-    except Exception as e:
-        print(f"❌ Ошибка в анализе: {e}")
-        return get_basic_analysis(matrix)
-
-
-def get_basic_analysis(matrix):
-    """Базовая версия анализа (если нет analysis.py)"""
-    # Определяем самые сильные и слабые цифры
-    strongest_digit = max(matrix.items(), key=lambda x: x[1]) if matrix else (0, 0)
-    weakest_digit = min(matrix.items(), key=lambda x: x[1]) if matrix else (0, 0)
-    
-    # Базовая интерпретация
-    basic_interpretations = {
-        1: "Характер и воля",
-        2: "Энергия и эмоции", 
-        3: "Интересы и таланты",
-        4: "Здоровье и физика",
-        5: "Логика и интуиция",
-        6: "Труд и мастерство",
-        7: "Удача и везение",
-        8: "Долг и ответственность",
-        9: "Память и интеллект"
+def get_total_number_description(total):
+    """Возвращает описание общего числа"""
+    descriptions = {
+        15: "🌟 Число 15: Вы прирождённый учитель и наставник. Ваша миссия — нести знания и вдохновлять других.",
+        16: "⚡ Число 16: Вы разрушаете старое, чтобы построить новое. Не бойтесь перемен — они ведут к росту.",
+        17: "✨ Число 17: Звезда! Вы талантливы, удачливы и притягиваете успех. Ваша задача — сиять ярко.",
+        18: "🌙 Число 18: Луна дарит вам глубокую интуицию и мистические способности. Доверяйте своим снам.",
+        19: "☀️ Число 19: Солнце! Вы лидер, творец, источник света для других. Ваша энергия заразительна.",
+        20: "🌅 Число 20: Время пробуждения. Вы чувствуете своё предназначение и готовы его реализовать.",
+        21: "🌍 Число 21: Мир открыт для вас. Успех придёт через расширение горизонтов и новые связи.",
+        22: "🛠️ Число 22: Вы мастер-созидатель. Можете построить что угодно, если приложите волю.",
+        23: "🍀 Число 23: Везение и удача сопутствуют вам. Ловите моменты — они ведут к успеху.",
+        24: "⚖️ Число 24: Кармическое число. Ваши поступки возвращаются — творите добро.",
+        25: "💪 Число 25: Сила и власть. Вы способны влиять на людей и события. Используйте это мудро.",
+        26: "🤝 Число 26: Партнёрство и союзы. Успех приходит через сотрудничество.",
+        27: "📚 Число 27: Мудрость и знание. Учитесь и передавайте опыт — в этом ваша сила.",
+        28: "☯️ Число 28: Баланс и гармония. Вы умеете находить равновесие во всём.",
+        29: "🔥 Число 29: Энергия и активность. Вы в движении — и это приносит плоды.",
+        30: "🎨 Число 30: Творчество и вдохновение. Создавайте, творите, не бойтесь самовыражения."
     }
-    
-    strongest = basic_interpretations.get(strongest_digit[0], "Не определено")
-    weakest = basic_interpretations.get(weakest_digit[0], "Не определено")
-    
-    return {
-        'success': True,
-        'report_messages': [
-            f"📊 *БАЗОВЫЙ АНАЛИЗ МАТРИЦЫ*\n\n"
-            f"💪 *Самая сильная цифра:* {strongest_digit[0]} ({strongest})\n"
-            f"🔢 Количество: {strongest_digit[1]}\n\n"
-            f"🌱 *Самая слабая цифра:* {weakest_digit[0]} ({weakest})\n"
-            f"🔢 Количество: {weakest_digit[1]}\n\n"
-            f"🎯 *Рекомендация:* Развивайте аспект '{weakest}'"
-        ],
-        'has_detailed_analysis': False,
-        'basic_analysis': True
-    }
+    return descriptions.get(total, f"Число {total}: Уникальное сочетание энергий")

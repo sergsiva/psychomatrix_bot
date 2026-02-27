@@ -1,23 +1,28 @@
 import telebot
 from telebot import types
-from calculator import calculate_matrix
+from calculator import calculate_matrix, get_total_number_description
 from database import (
     save_calculation, 
     get_user_calculations,
     get_user_stats,
     save_user,
-    save_stat
+    save_stat,
+    save_analysis,
+    get_user_analyses,
+    get_analysis_by_name,
+    delete_analysis
 )
+from formatter import format_pretty_matrix, format_matrix_with_headers, format_short_matrix
 import time
 import os
 import json
 
-TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAEwVyxh2MZ0kDM9Q-QnHQOxiaj0Z2Fck20')
+TOKEN = os.getenv('BOT_TOKEN', '8592056819:AAFO7bstGsvwEr1OIlqS_4vhT0ehQGkiZL4')
 bot = telebot.TeleBot(TOKEN, threaded=True)
 
 print("=" * 50)
 print("🤖 PSY CODE MATRIX BOT")
-print("📊 Версия с детальным анализом")
+print("📊 Версия с сохранением разборов")
 print("=" * 50)
 
 # ============================================
@@ -32,9 +37,10 @@ def get_main_keyboard():
     btn2 = types.KeyboardButton("📜 История")
     btn3 = types.KeyboardButton("📊 Статистика")
     btn4 = types.KeyboardButton("🔮 Анализ")
-    btn5 = types.KeyboardButton("❓ Помощь")
+    btn5 = types.KeyboardButton("💾 Мои разборы")
+    btn6 = types.KeyboardButton("❓ Помощь")
     
-    markup.add(btn1, btn2, btn3, btn4, btn5)
+    markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
     return markup
 
 # ============================================
@@ -46,7 +52,6 @@ def start_command(message):
     """Главное меню"""
     print(f"📨 /start от {message.from_user.username or message.chat.id}")
     
-    # Сохраняем пользователя
     try:
         save_user(
             message.chat.id,
@@ -68,6 +73,7 @@ def start_command(message):
 • 📜 Просмотреть историю расчетов  
 • 📊 Узнать свою статистику
 • 🔮 Получить детальный анализ
+• 💾 Сохранять разборы с именами
 
 *📅 Формат даты:* **ДД.ММ.ГГГГ**
 *✨ Пример:* **15.08.1994**
@@ -85,7 +91,6 @@ def start_command(message):
     # Если команда пришла с параметром (датой)
     if len(message.text.split()) > 1:
         birthdate = message.text.split()[1]
-        # Отправляем дату в обработчик
         message.text = birthdate
         handle_date_input(message)
 
@@ -103,6 +108,42 @@ def stats_command(message):
 def analysis_command(message):
     """Полный детальный анализ"""
     full_analysis(message.chat.id)
+
+@bot.message_handler(commands=['save'])
+def save_command(message):
+    """Сохранить последний расчет с именем"""
+    msg = bot.send_message(
+        message.chat.id,
+        "📝 *Введите имя для этого разбора:*\n\n"
+        "Например: *Мама*, *Папа*, *2025 год*",
+        parse_mode='Markdown'
+    )
+    bot.register_next_step_handler(msg, process_save_name)
+
+@bot.message_handler(commands=['list'])
+def list_command(message):
+    """Показать список сохраненных разборов"""
+    show_saved_analyses(message.chat.id)
+
+@bot.message_handler(commands=['get'])
+def get_command(message):
+    """Показать конкретный разбор"""
+    msg = bot.send_message(
+        message.chat.id,
+        "📝 *Введите имя разбора, который хотите увидеть:*",
+        parse_mode='Markdown'
+    )
+    bot.register_next_step_handler(msg, process_get_name)
+
+@bot.message_handler(commands=['delete'])
+def delete_command(message):
+    """Удалить разбор"""
+    msg = bot.send_message(
+        message.chat.id,
+        "📝 *Введите имя разбора, который хотите удалить:*",
+        parse_mode='Markdown'
+    )
+    bot.register_next_step_handler(msg, process_delete_name)
 
 # ============================================
 # ОБРАБОТЧИКИ КНОПОК
@@ -135,24 +176,40 @@ def handle_analysis_button(message):
     """Кнопка анализа"""
     full_analysis(message.chat.id)
 
+@bot.message_handler(func=lambda msg: msg.text == "💾 Мои разборы")
+def handle_saved_button(message):
+    """Кнопка сохраненных разборов"""
+    show_saved_analyses(message.chat.id)
+
 @bot.message_handler(func=lambda msg: msg.text == "❓ Помощь")
 def handle_help_button(message):
     """Кнопка помощи"""
+    help_text = """
+🆘 *Помощь*
+
+*🧮 Рассчитать* - новый расчет
+*📜 История* - последние 10 расчетов
+*📊 Статистика* - ваша статистика
+*🔮 Анализ* - детальный разбор последнего
+*💾 Мои разборы* - сохраненные с именами
+
+*Команды:*
+/save ИМЯ - сохранить последний расчет
+/list - список сохраненных
+/get ИМЯ - показать разбор
+/delete ИМЯ - удалить разбор
+
+*📅 Формат даты:* **ДД.ММ.ГГГГ**
+"""
     bot.send_message(
         message.chat.id,
-        "🆘 *Помощь*\n\n"
-        "*🧮 Рассчитать* - новый расчет\n"
-        "*📜 История* - ваши расчеты\n"
-        "*📊 Статистика* - ваша статистика\n"
-        "*🔮 Анализ* - детальный разбор\n\n"
-        "Просто отправьте дату рождения:\n"
-        "📅 **ДД.ММ.ГГГГ**",
+        help_text,
         parse_mode='Markdown',
         reply_markup=get_main_keyboard()
     )
 
 # ============================================
-# ОБРАБОТКА ДАТЫ (основная функция)
+# ОБРАБОТКА ДАТЫ
 # ============================================
 
 @bot.message_handler(func=lambda msg: '.' in msg.text and len(msg.text) == 10)
@@ -162,7 +219,6 @@ def handle_date_input(message):
     print(f"📨 Дата от {message.chat.id}: {user_text}")
     
     try:
-        # Рассчитываем матрицу
         result = calculate_matrix(user_text)
         
         if not result['success']:
@@ -176,12 +232,17 @@ def handle_date_input(message):
             )
             return
         
-        # Сохраняем в базу
+        # Сохраняем в базу (историю)
         try:
-            save_calculation(message.chat.id, user_text, result)
-            save_stat(message.chat.id, 'calculation_saved')
+            calc_id = save_calculation(message.chat.id, user_text, result)
+            save_stat(message.chat.id, 'calculation_saved', {'calc_id': calc_id})
         except Exception as e:
-            print(f"⚠️ Ошибка сохранения: {e}")
+            print(f"⚠️ Ошибка сохранения в историю: {e}")
+        
+        # Сохраняем результат в user_data для последующего сохранения
+        if not hasattr(bot, 'user_data'):
+            bot.user_data = {}
+        bot.user_data[message.chat.id] = {'last_result': result}
         
         # Показываем результат
         show_calculation_result(message.chat.id, result)
@@ -201,21 +262,12 @@ def handle_date_input(message):
 # ============================================
 
 def show_calculation_result(chat_id, result):
-    """Показывает результат расчета"""
+    """Показывает результат расчета (краткий)"""
     m = result['matrix']
     
-    # Красивое отображение матрицы
-    matrix_display = f"""
-┌──────┬──────┬──────┐
-│{m[1]}│{m[4]}│{m[7]}│
-├──────┼──────┼──────┤
-│{m[2]}│{m[5]}│{m[8]}│
-├──────┼──────┼──────┤
-│{m[3]}│{m[6]}│{m[9]}│
-└──────┴──────┴──────┘
-"""
+    # Используем красивый формат
+    matrix_display = format_pretty_matrix(m)
     
-    # Базовый результат
     response = f"""
 ✅ *Расчет готов!*
 
@@ -223,15 +275,15 @@ def show_calculation_result(chat_id, result):
 
 {matrix_display}
 *Цифры матрицы:*
-1️⃣ Характер: {m[1]} ({result.get('interpretations', {}).get(1, '')})
-2️⃣ Энергия: {m[2]} ({result.get('interpretations', {}).get(2, '')})
-3️⃣ Интерес: {m[3]} ({result.get('interpretations', {}).get(3, '')})
-4️⃣ Здоровье: {m[4]} ({result.get('interpretations', {}).get(4, '')})
-5️⃣ Логика: {m[5]} ({result.get('interpretations', {}).get(5, '')})
-6️⃣ Труд: {m[6]} ({result.get('interpretations', {}).get(6, '')})
-7️⃣ Удача: {m[7]} ({result.get('interpretations', {}).get(7, '')})
-8️⃣ Долг: {m[8]} ({result.get('interpretations', {}).get(8, '')})
-9️⃣ Память: {m[9]} ({result.get('interpretations', {}).get(9, '')})
+1️⃣ Характер: {m.get(1, 0)}
+2️⃣ Энергия: {m.get(2, 0)}
+3️⃣ Интерес: {m.get(3, 0)}
+4️⃣ Здоровье: {m.get(4, 0)}
+5️⃣ Логика: {m.get(5, 0)}
+6️⃣ Труд: {m.get(6, 0)}
+7️⃣ Удача: {m.get(7, 0)}
+8️⃣ Долг: {m.get(8, 0)}
+9️⃣ Память: {m.get(9, 0)}
 
 🔢 *Рабочие числа:*
 РЧ1 = {result['work_numbers'][0]}
@@ -239,7 +291,10 @@ def show_calculation_result(chat_id, result):
 РЧ3 = {result['work_numbers'][2]}
 РЧ4 = {result['work_numbers'][3]}
 
-💡 Используйте кнопку *🔮 Анализ* для детального разбора!
+✨ *Общее число:* {result['total_number']}
+{result['total_description']}
+
+💡 Используйте */save имя* чтобы сохранить этот разбор
 """
     
     bot.send_message(
@@ -252,7 +307,7 @@ def show_calculation_result(chat_id, result):
 def show_history(chat_id):
     """Показывает историю расчетов"""
     try:
-        calculations = get_user_calculations(chat_id, limit=5)
+        calculations = get_user_calculations(chat_id, limit=10)
         
         if not calculations:
             bot.send_message(
@@ -272,20 +327,17 @@ def show_history(chat_id):
             matrix = matrix_data.get('matrix', {})
             
             if matrix:
-                matrix_summary = f"{matrix.get(1,0)}{matrix.get(2,0)}{matrix.get(3,0)}-{matrix.get(4,0)}{matrix.get(5,0)}{matrix.get(6,0)}-{matrix.get(7,0)}{matrix.get(8,0)}{matrix.get(9,0)}"
+                matrix_summary = format_short_matrix(matrix)
             else:
                 matrix_summary = "нет данных"
             
             history_text += f"*{i}. {calc['birthdate']}*\n"
-            history_text += f"   🆔 #{calc.get('id', '?')}\n"
             history_text += f"   🧮 {matrix_summary}\n"
-            
             if calc.get('created_at'):
                 history_text += f"   📅 {calc['created_at'][:10]}\n"
-            
             history_text += "\n"
         
-        history_text += "Для повтора отправьте дату заново или нажмите *🔮 Анализ* для детального разбора."
+        history_text += "Для повтора отправьте дату заново."
         
         bot.send_message(
             chat_id,
@@ -313,6 +365,7 @@ def show_stats(chat_id):
 📊 *Ваша статистика:*
 
 • 📈 Всего расчетов: *{stats['total_calculations']}*
+• 💾 Сохраненных разборов: *{stats['total_saved']}*
 • 🕐 Первый расчет: *{stats['first_calculation'][:10] if stats['first_calculation'] else 'нет данных'}*
 • 🕐 Последний расчет: *{stats['last_calculation'][:10] if stats['last_calculation'] else 'нет данных'}*
 
@@ -337,102 +390,60 @@ def show_stats(chat_id):
         )
 
 def full_analysis(chat_id):
-    """Полный детальный анализ"""
+    """Полный детальный анализ (ОДНО сообщение)"""
     print(f"🔮 Анализ запрошен {chat_id}")
     
     try:
-        # Получаем последний расчет
         calculations = get_user_calculations(chat_id, limit=1)
         
         if not calculations:
             bot.send_message(
                 chat_id,
                 "📭 *Сначала сделайте расчет!*\n\n"
-                "У вас нет сохраненных расчетов.\n"
                 "Отправьте дату рождения (например: 15.08.1994)",
                 parse_mode='Markdown',
                 reply_markup=get_main_keyboard()
             )
             return
         
-        # Берем последний расчет
         last_calc = calculations[0]
         matrix_data = last_calc['matrix_data']
+        matrix = matrix_data.get('matrix', {})
+        birthdate = last_calc['birthdate']
         
-        # Проверяем есть ли детальный анализ
-        analysis_data = matrix_data.get('analysis')
-        
-        if not analysis_data:
-            bot.send_message(
-                chat_id,
-                "🔄 *Анализ недоступен*\n\n"
-                "Сделайте новый расчет для получения детального анализа.",
-                parse_mode='Markdown',
-                reply_markup=get_main_keyboard()
-            )
-            return
-        
-        # Отправляем заголовок
-        bot.send_message(
-            chat_id,
-            f"🔮 *ДЕТАЛЬНЫЙ АНАЛИЗ МАТРИЦЫ*\n"
-            f"📅 Дата: {last_calc['birthdate']}\n"
-            "=" * 30,
-            parse_mode='Markdown'
-        )
-        
-        # Отправляем анализ по частям
-        if analysis_data.get('has_detailed_analysis') and 'report_messages' in analysis_data:
-            # Детальный анализ из analysis.py
-            for i, msg in enumerate(analysis_data['report_messages'], 1):
-                try:
-                    bot.send_message(
-                        chat_id,
-                        msg,
-                        parse_mode='Markdown'
-                    )
-                    if i < len(analysis_data['report_messages']):
-                        time.sleep(1)
-                except Exception as e:
-                    print(f"❌ Ошибка отправки части {i}: {e}")
-                    continue
-        else:
-            # Базовый анализ
-            if 'report_messages' in analysis_data:
-                for msg in analysis_data['report_messages']:
-                    bot.send_message(chat_id, msg, parse_mode='Markdown')
-            else:
-                # Резервный вариант
-                matrix = matrix_data.get('matrix', {})
-                strongest = max(matrix.items(), key=lambda x: x[1]) if matrix else (0, 0)
-                
-                analysis_text = f"""
-📊 *АНАЛИЗ МАТРИЦЫ*
+        # Собираем всё в одно сообщение
+        analysis_text = f"""
+🔮 *ДЕТАЛЬНЫЙ АНАЛИЗ МАТРИЦЫ*
+📅 Дата: {birthdate}
 
-💪 *Самая сильная цифра:* {strongest[0]}
-🔢 Встречается {strongest[1]} раз
+{format_matrix_with_headers(matrix)}
 
-🎯 *Что это значит:*
-• Цифра 1 - сила характера
-• Цифра 2 - уровень энергии  
-• Цифра 3 - таланты и интересы
-• Цифра 4 - здоровье
-• Цифра 5 - логика
-• Цифра 6 - отношение к труду
-• Цифра 7 - удача
-• Цифра 8 - чувство долга
-• Цифра 9 - память
+*Цифры матрицы:*
+1️⃣ *Характер* ({matrix.get(1,0)}): {"Слабый" if matrix.get(1,0)<=1 else "Средний" if matrix.get(1,0)<=2 else "Сильный"}
+2️⃣ *Энергия* ({matrix.get(2,0)}): {"Низкая" if matrix.get(2,0)<=1 else "Средняя" if matrix.get(2,0)<=2 else "Высокая"}
+3️⃣ *Интерес* ({matrix.get(3,0)}): {"Узкий" if matrix.get(3,0)<=1 else "Разносторонний" if matrix.get(3,0)<=2 else "Очень разносторонний"}
+4️⃣ *Здоровье* ({matrix.get(4,0)}): {"Слабое" if matrix.get(4,0)<=1 else "Нормальное" if matrix.get(4,0)<=2 else "Крепкое"}
+5️⃣ *Логика* ({matrix.get(5,0)}): {"Интуиция" if matrix.get(5,0)<=1 else "Логика" if matrix.get(5,0)<=2 else "Гениальность"}
+6️⃣ *Труд* ({matrix.get(6,0)}): {"Не любит" if matrix.get(6,0)<=1 else "Нормально" if matrix.get(6,0)<=2 else "Трудоголик"}
+7️⃣ *Удача* ({matrix.get(7,0)}): {"Невезучий" if matrix.get(7,0)<=1 else "Везучий" if matrix.get(7,0)<=2 else "Баловень судьбы"}
+8️⃣ *Долг* ({matrix.get(8,0)}): {"Безответственный" if matrix.get(8,0)<=1 else "Ответственный" if matrix.get(8,0)<=2 else "Гиперответственный"}
+9️⃣ *Память* ({matrix.get(9,0)}): {"Слабая" if matrix.get(9,0)<=1 else "Хорошая" if matrix.get(9,0)<=2 else "Феноменальная"}
 
-✨ *Совет:* Развивайте все аспекты своей личности!
+🔢 *Рабочие числа:*
+РЧ1 = {matrix_data.get('work_numbers', [0,0,0,0])[0]}
+РЧ2 = {matrix_data.get('work_numbers', [0,0,0,0])[1]}
+РЧ3 = {matrix_data.get('work_numbers', [0,0,0,0])[2]}
+РЧ4 = {matrix_data.get('work_numbers', [0,0,0,0])[3]}
+
+✨ *Общее число:* {matrix_data.get('total_number', 0)}
+{matrix_data.get('total_description', '')}
+
+💡 *Совет:* Развивайте слабые стороны и укрепляйте сильные!
 """
-                bot.send_message(chat_id, analysis_text, parse_mode='Markdown')
         
-        # Финальное сообщение
         bot.send_message(
             chat_id,
-            "✨ *Анализ завершен!*\n\n"
-            "Сохраните эти рекомендации.\n"
-            "Для нового анализа сделайте расчет другой даты.",
+            analysis_text,
             parse_mode='Markdown',
             reply_markup=get_main_keyboard()
         )
@@ -444,6 +455,177 @@ def full_analysis(chat_id):
         bot.send_message(
             chat_id,
             "⚠️ *Ошибка при анализе*\nПопробуйте позже.",
+            parse_mode='Markdown'
+        )
+
+# ============================================
+# ФУНКЦИИ ДЛЯ СОХРАНЕНИЯ РАЗБОРОВ
+# ============================================
+
+def process_save_name(message):
+    """Обрабатывает ввод имени для сохранения"""
+    name = message.text.strip()
+    chat_id = message.chat.id
+    
+    if not name:
+        bot.send_message(chat_id, "❌ Имя не может быть пустым")
+        return
+    
+    # Проверяем, есть ли последний результат
+    if not hasattr(bot, 'user_data') or chat_id not in bot.user_data:
+        bot.send_message(
+            chat_id,
+            "❌ *Нет последнего расчета*\n\n"
+            "Сначала сделайте расчет даты.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    last_result = bot.user_data[chat_id].get('last_result')
+    if not last_result:
+        bot.send_message(
+            chat_id,
+            "❌ *Нет последнего расчета*\n\n"
+            "Сначала сделайте расчет даты.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Сохраняем
+    success, result = save_analysis(
+        chat_id, 
+        name, 
+        last_result['date'], 
+        last_result
+    )
+    
+    if success:
+        bot.send_message(
+            chat_id,
+            f"✅ *Разбор сохранен!*\n\n"
+            f"📝 Имя: *{name}*\n"
+            f"📅 Дата: {last_result['date']}\n\n"
+            f"Используйте /get {name} чтобы увидеть его снова.",
+            parse_mode='Markdown'
+        )
+        save_stat(chat_id, 'analysis_saved', {'name': name})
+    else:
+        bot.send_message(
+            chat_id,
+            f"❌ *Ошибка*\n\n{result}",
+            parse_mode='Markdown'
+        )
+
+def show_saved_analyses(chat_id):
+    """Показывает список сохраненных разборов"""
+    try:
+        analyses = get_user_analyses(chat_id)
+        
+        if not analyses:
+            bot.send_message(
+                chat_id,
+                "📭 *У вас нет сохраненных разборов*\n\n"
+                "Сделайте расчет и используйте */save имя* чтобы сохранить.",
+                parse_mode='Markdown',
+                reply_markup=get_main_keyboard()
+            )
+            return
+        
+        text = "📚 *Ваши сохраненные разборы:*\n\n"
+        
+        for a in analyses:
+            text += f"📝 *{a['name']}*\n"
+            text += f"   📅 {a['birthdate']}\n"
+            text += f"   🕐 {a['created_at'][:10]}\n"
+            text += f"   👉 /get {a['name']}\n\n"
+        
+        text += "Используйте */get имя* чтобы увидеть полный разбор."
+        
+        bot.send_message(
+            chat_id,
+            text,
+            parse_mode='Markdown',
+            reply_markup=get_main_keyboard()
+        )
+        
+        save_stat(chat_id, 'list_viewed')
+        
+    except Exception as e:
+        print(f"❌ Ошибка показа списка: {e}")
+        bot.send_message(
+            chat_id,
+            "⚠️ *Ошибка загрузки списка*",
+            parse_mode='Markdown'
+        )
+
+def process_get_name(message):
+    """Показывает сохраненный разбор по имени"""
+    name = message.text.strip()
+    chat_id = message.chat.id
+    
+    analysis = get_analysis_by_name(chat_id, name)
+    
+    if not analysis:
+        bot.send_message(
+            chat_id,
+            f"❌ *Разбор '{name}' не найден*",
+            parse_mode='Markdown'
+        )
+        return
+    
+    result = analysis['matrix_data']
+    matrix = result.get('matrix', {})
+    
+    analysis_text = f"""
+📝 *Сохраненный разбор: {name}*
+📅 Дата: {analysis['birthdate']}
+
+{format_pretty_matrix(matrix)}
+
+*Цифры матрицы:*
+1️⃣ Характер: {matrix.get(1,0)}
+2️⃣ Энергия: {matrix.get(2,0)}
+3️⃣ Интерес: {matrix.get(3,0)}
+4️⃣ Здоровье: {matrix.get(4,0)}
+5️⃣ Логика: {matrix.get(5,0)}
+6️⃣ Труд: {matrix.get(6,0)}
+7️⃣ Удача: {matrix.get(7,0)}
+8️⃣ Долг: {matrix.get(8,0)}
+9️⃣ Память: {matrix.get(9,0)}
+
+🔢 *Рабочие числа:*
+РЧ1 = {result.get('work_numbers', [0,0,0,0])[0]}
+РЧ2 = {result.get('work_numbers', [0,0,0,0])[1]}
+РЧ3 = {result.get('work_numbers', [0,0,0,0])[2]}
+РЧ4 = {result.get('work_numbers', [0,0,0,0])[3]}
+
+✨ *Общее число:* {result.get('total_number', 0)}
+{result.get('total_description', '')}
+"""
+    
+    bot.send_message(
+        chat_id,
+        analysis_text,
+        parse_mode='Markdown'
+    )
+    save_stat(chat_id, 'analysis_retrieved', {'name': name})
+
+def process_delete_name(message):
+    """Удаляет сохраненный разбор"""
+    name = message.text.strip()
+    chat_id = message.chat.id
+    
+    if delete_analysis(chat_id, name):
+        bot.send_message(
+            chat_id,
+            f"✅ *Разбор '{name}' удален*",
+            parse_mode='Markdown'
+        )
+        save_stat(chat_id, 'analysis_deleted', {'name': name})
+    else:
+        bot.send_message(
+            chat_id,
+            f"❌ *Разбор '{name}' не найден*",
             parse_mode='Markdown'
         )
 
@@ -467,54 +649,6 @@ def handle_unknown(message):
     )
 
 # ============================================
-# ОБРАБОТЧИК ДАННЫХ ИЗ MINI APP
-# ============================================
-
-@bot.message_handler(content_types=['web_app_data'])
-def handle_web_app(message):
-    """Обработка данных из Mini App и отправка ответа"""
-    print("🔥🔥🔥 WEB_APP_DATA ПОЛУЧЕН! 🔥🔥🔥")
-    print(f"📦 Данные: {message.web_app_data.data}")
-    print(f"🆔 Chat ID: {message.chat.id}")
-    print(f"🆔 Message ID: {message.message_id}")
-    
-    try:
-        data = message.web_app_data.data
-        print(f"📲 WebApp data: {data}")
-        
-        # Пробуем распарсить JSON
-        try:
-            json_data = json.loads(data)
-            birthdate = json_data.get('birthdate', data)
-        except:
-            birthdate = data
-        
-        print(f"📅 Дата для расчета: {birthdate}")
-        
-        # Рассчитываем матрицу
-        result = calculate_matrix(birthdate)
-        
-        if result['success']:
-            # Отправляем результат обратно в Mini App
-            bot.send_message(
-                message.chat.id,
-                json.dumps(result, ensure_ascii=False),
-                reply_to_message_id=message.message_id
-            )
-            print("✅ Результат отправлен обратно в Mini App")
-        else:
-            bot.send_message(
-                message.chat.id,
-                json.dumps({'error': 'Неверная дата'}),
-                reply_to_message_id=message.message_id
-            )
-                
-    except Exception as e:
-        print(f"❌ Ошибка WebApp: {e}")
-        import traceback
-        traceback.print_exc()
-
-# ============================================
 # ЗАПУСК БОТА
 # ============================================
 
@@ -535,5 +669,6 @@ def run_bot_safe():
             time.sleep(5)
 
 if __name__ == "__main__":
-    # Запускаем безопасно
+    # Инициализируем хранилище для последних результатов
+    bot.user_data = {}
     run_bot_safe()
